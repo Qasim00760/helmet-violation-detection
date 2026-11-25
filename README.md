@@ -1,7 +1,8 @@
 # Helmet Violation Detection
 
-A traffic enforcement tool for motorcycle riders. Upload a road photo and a
-YOLOv8 model marks riders, heads with and without helmets, and number plates.
+A traffic enforcement tool for motorcycle riders. Point a phone or webcam at the
+road, or upload a photo, and a YOLOv8 model marks riders, heads with and without
+helmets, and number plates.
 Each rider without a helmet is matched to their number plate, the plate is read
 with OCR, and an officer confirms a numbered challan. Everything runs in the
 browser, so photos and challans never leave the device.
@@ -15,6 +16,8 @@ Safety and Challan System (IBSCS).
 
 ## What it does
 
+- Live camera mode: detection boxes drawn over the camera feed, with automatic capture of any frame that shows a rider without a helmet
+- Photo mode: upload, drag and drop, paste, or try a sample photo
 - Detects four classes: helmet, no helmet, rider and number plate
 - Links every bare head to the rider box around it, and that rider to the plate inside or just below it
 - Reads the plate with Tesseract OCR after cropping, enlarging and boosting contrast; the officer checks or types the plate
@@ -46,9 +49,10 @@ challan needs an officer to confirm it instead of being issued automatically.
 ## How it runs in the browser
 
 1. The photo is letterboxed to 640 x 640 the same way Ultralytics does it.
-2. The model runs in a Web Worker with ONNX Runtime Web (WebAssembly), so the page stays responsive. A scan takes a few seconds on a laptop.
-3. The 8,400 candidate boxes are decoded and filtered with non-maximum suppression. Helmet and no-helmet share one group, so a head is never reported as both.
-4. Plate crops go to Tesseract.js. Its worker, WebAssembly core and English model are copied from npm into the build, so nothing loads from a third-party CDN.
+2. The model runs in a Web Worker with ONNX Runtime Web, so the page stays responsive. It uses the GPU through WebGPU where the browser supports it (recent Chrome and Edge), and falls back to WebAssembly on the CPU elsewhere. On the CPU a scan takes about 6 seconds on a laptop, so live mode is only smooth with WebGPU.
+3. In live mode the worker takes one camera frame at a time; a new frame is sent only after the last result arrives, so a slow device never builds up a queue. When auto-capture is on, the first frame with a rider without a helmet is frozen and sent to the review panel.
+4. The 8,400 candidate boxes are decoded and filtered with non-maximum suppression. Helmet and no-helmet share one group, so a head is never reported as both.
+5. Plate crops go to Tesseract.js. Its worker, WebAssembly core and English model are copied from npm into the build, so nothing loads from a third-party CDN.
 
 ### Model size
 
@@ -67,7 +71,7 @@ helmet-violation-detection/
 ├── training/export_onnx.py       # builds the 87 MB ONNX file for the web app
 ├── web/                          # Vite + React + TypeScript app (Node.js)
 │   ├── src/detector/             # worker, letterbox, decoding, NMS, violation matching
-│   ├── src/components/           # image stage, violation card, challan slip
+│   ├── src/components/           # image stage, live camera, violation card, challan slip
 │   ├── src/challans.ts           # numbering, duplicate check, CSV, storage
 │   ├── src/ocr.ts                # plate crop, preprocessing, Tesseract
 │   ├── scripts/copy-ocr.mjs      # copies the OCR files into the build
@@ -101,6 +105,7 @@ python training/export_onnx.py
 - Plate reading needs a sharp, roughly front-facing plate. Most plates in street photos are too small, so the officer types them in.
 - Challans are stored in the browser's local storage, not in a shared database.
 - The first visit downloads the 87 MB model; after that the browser cache is used.
+- Without WebGPU, live mode scans about one frame every 6 seconds.
 
 ## Credits
 
@@ -109,4 +114,4 @@ Stecanella, Yunhao Luo, YearOne, Aldrin Rachman Pradana and Harry Feller.
 
 ## Tech stack
 
-Python, Ultralytics YOLOv8, ONNX, ONNX Runtime Web, Tesseract.js, TypeScript, React, Vite, Vitest, Node.js, Netlify
+Python, Ultralytics YOLOv8, ONNX, ONNX Runtime Web (WebGPU and WebAssembly), Tesseract.js, MediaDevices camera API, TypeScript, React, Vite, Vitest, Node.js, Netlify

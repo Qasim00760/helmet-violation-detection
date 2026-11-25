@@ -12,10 +12,14 @@ interface Props { image: HTMLImageElement | null; detections: Detection[]; showR
 export interface StageHandle { exportPng(): Promise<Blob | null> }
 
 function draw(ctx: CanvasRenderingContext2D, img: HTMLImageElement, dets: Detection[], showRiders: boolean) {
-  const { naturalWidth: w, naturalHeight: h } = img;
-  ctx.canvas.width = w;
-  ctx.canvas.height = h;
+  ctx.canvas.width = img.naturalWidth;
+  ctx.canvas.height = img.naturalHeight;
   ctx.drawImage(img, 0, 0);
+  drawBoxes(ctx, dets, showRiders, img.naturalWidth, img.naturalHeight);
+}
+
+/** Draw detection boxes and labels; also used for the live camera overlay. */
+export function drawBoxes(ctx: CanvasRenderingContext2D, dets: Detection[], showRiders: boolean, w: number, h: number) {
   const line = Math.max(2, Math.round(Math.max(w, h) / 320));
   const font = Math.max(12, Math.round(Math.max(w, h) / 55));
   ctx.font = `600 ${font}px Archivo, sans-serif`;

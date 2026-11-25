@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Detection } from "./types";
 
-type Status = { state: "loading"; progress: number } | { state: "ready" } | { state: "error"; message: string };
+type Status =
+  | { state: "loading"; progress: number }
+  | { state: "ready"; backend: "webgpu" | "wasm" }
+  | { state: "error"; message: string };
 
 export function useDetector() {
   const worker = useRef<Worker | null>(null);
@@ -15,7 +18,7 @@ export function useDetector() {
     w.onmessage = (e) => {
       const m = e.data;
       if (m.type === "progress") setStatus({ state: "loading", progress: m.value });
-      else if (m.type === "ready") setStatus({ state: "ready" });
+      else if (m.type === "ready") setStatus({ state: "ready", backend: m.backend });
       else if (m.type === "result") {
         pending.current.get(m.id)?.resolve({ detections: m.detections, ms: m.ms });
         pending.current.delete(m.id);
@@ -29,8 +32,9 @@ export function useDetector() {
     return () => w.terminate();
   }, []);
 
-  const detect = useCallback(async (image: Blob, conf: number) => {
-    const bitmap = await createImageBitmap(image);
+  /** Accepts an image file or anything createImageBitmap takes, such as a playing <video>. */
+  const detect = useCallback(async (source: ImageBitmapSource, conf: number) => {
+    const bitmap = await createImageBitmap(source);
     const id = nextId.current++;
     return new Promise<{ detections: Detection[]; ms: number }>((resolve, reject) => {
       pending.current.set(id, { resolve, reject });

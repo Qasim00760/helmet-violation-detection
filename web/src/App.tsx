@@ -5,6 +5,7 @@ import { findViolations } from "./detector/violations";
 import { Stage, type StageHandle, COLORS } from "./components/Stage";
 import { ViolationCard } from "./components/ViolationCard";
 import { ChallanSlip } from "./components/ChallanSlip";
+import { LiveCamera } from "./components/LiveCamera";
 import { findDuplicate, loadChallans, nextChallanNumber, saveChallans, toCsv, type Challan } from "./challans";
 import { SAMPLES } from "./samples";
 
@@ -44,6 +45,7 @@ export default function App() {
   const [challans, setChallans] = useState<Challan[]>(loadChallans);
   const [issued, setIssued] = useState<Record<number, string>>({});
   const [runId, setRunId] = useState(0);
+  const [mode, setMode] = useState<"photo" | "live">("photo");
 
   const detections = useMemo(() => all?.filter((d) => d.score >= conf) ?? [], [all, conf]);
   const violations = useMemo(() => findViolations(detections), [detections]);
@@ -119,12 +121,29 @@ export default function App() {
         <section className="intro">
           <h1>Find riders without helmets and issue the challan from the same screen.</h1>
           <p>
-            A YOLOv8 model marks riders, helmets and number plates in a road photo, reads the plate, and lets an
-            officer confirm each challan. Everything runs in your browser.
+            A YOLOv8 model marks riders, helmets and number plates in a road photo or a live camera feed, reads the
+            plate, and lets an officer confirm each challan. Everything runs in your browser.
           </p>
         </section>
 
+        <div className="tabs" role="tablist" aria-label="Input">
+          <button role="tab" aria-selected={mode === "photo"} className={mode === "photo" ? "is-on" : ""} onClick={() => setMode("photo")}>Photo</button>
+          <button role="tab" aria-selected={mode === "live"} className={mode === "live" ? "is-on" : ""} onClick={() => setMode("live")} disabled={!ready}>Live camera</button>
+          {status.state === "ready" && <span className="backend">Running on {status.backend === "webgpu" ? "the GPU (WebGPU)" : "the CPU (WebAssembly)"}</span>}
+        </div>
+
         <section className="workspace" aria-label="Detector">
+          {mode === "live" && status.state === "ready" ? (
+            <div className="drop live-wrap">
+              <LiveCamera
+                detect={detect}
+                conf={conf}
+                showRiders={showRiders}
+                backend={status.backend}
+                onCapture={(blob, label) => { setMode("photo"); run(blob, label); }}
+              />
+            </div>
+          ) : (
           <div
             className={`drop${image ? "" : " is-empty"}`}
             onDragOver={(e) => e.preventDefault()}
@@ -144,10 +163,11 @@ export default function App() {
               </div>
             )}
           </div>
+          )}
 
           <div className="controls">
             <div className="row">
-              <button className="btn primary" onClick={() => fileInput.current?.click()} disabled={!ready || busy}>Upload a photo</button>
+              <button className="btn primary" onClick={() => { setMode("photo"); fileInput.current?.click(); }} disabled={!ready || busy}>Upload a photo</button>
               <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
               <button className="btn" onClick={async () => { const b = await stage.current?.exportPng(); if (b) download("detections.png", b); }} disabled={!all || busy}>Download result</button>
               <span className="file-name" title={name}>{busy ? "Scanning, this takes a few seconds…" : name}{ms !== null && !busy ? `, ${Math.round(ms)} ms` : ""}</span>
@@ -172,17 +192,20 @@ export default function App() {
           </div>
 
           <aside className="panel" aria-live="polite">
-            <div className="tally">
+            {mode === "photo" && <div className="tally">
               <div className={counts.bare ? "tally-bad" : ""}><strong>{all ? counts.bare : "–"}</strong><span>without helmet</span></div>
               <div><strong>{all ? counts.helmet : "–"}</strong><span>with helmet</span></div>
               <div><strong>{all ? counts.riders : "–"}</strong><span>riders</span></div>
-            </div>
+            </div>}
             {notice && <p className="notice">{notice}</p>}
-            {all && image && violations.length === 0 && (
+            {mode === "live" && (
+              <p className="panel-empty">In live mode, a frame with a rider without a helmet is captured and shown here for review.</p>
+            )}
+            {mode === "photo" && all && image && violations.length === 0 && (
               <p className="panel-empty">No rider without a helmet in this photo. Lower the confidence if you think one was missed.</p>
             )}
             <div className="vlist">
-              {image && violations.map((v, i) => (
+              {mode === "photo" && image && violations.map((v, i) => (
                 <ViolationCard key={`${runId}-${i}-${v.head.x}`} index={i} image={image} violation={v} issuedNumber={issued[i]} onIssue={(p, ev) => issue(i, p, ev)} />
               ))}
             </div>
@@ -198,7 +221,7 @@ export default function App() {
           <ul>
             {SAMPLES.map((s) => (
               <li key={s.file}>
-                <button className={name === s.label ? "is-active" : ""} onClick={() => runSample(s.file, s.label)} disabled={!ready || busy}>
+                <button className={name === s.label ? "is-active" : ""} onClick={() => { setMode("photo"); runSample(s.file, s.label); }} disabled={!ready || busy}>
                   <img src={`/samples/${s.file}`} alt="" loading="lazy" />
                   <span>{s.label}</span>
                 </button>
@@ -245,7 +268,7 @@ export default function App() {
                 <tr><th scope="row">Input size</th><td>640 × 640</td></tr>
                 <tr><th scope="row">Validation mAP50</th><td>0.947</td></tr>
                 <tr><th scope="row">Validation mAP50-95</th><td>0.785</td></tr>
-                <tr><th scope="row">Runtime</th><td>ONNX Runtime Web, WebAssembly</td></tr>
+                <tr><th scope="row">Runtime</th><td>ONNX Runtime Web: WebGPU, or WebAssembly as a fallback</td></tr>
                 <tr><th scope="row">Model file</th><td>87 MB, 16-bit weights</td></tr>
               </tbody>
             </table>
