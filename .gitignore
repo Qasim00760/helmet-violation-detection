@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+models/*.onnx
+web/node_modules/
+web/dist/
+web/public/ocr/
+web/*.tsbuildinfo
+.DS_Store
